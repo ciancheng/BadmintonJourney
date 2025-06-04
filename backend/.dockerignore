@@ -1,0 +1,39 @@
+# Maven
+.m2/
+target/
+!target/badminton-journey-backend-*.jar
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+*.tmp
+*.temp
+
+# Test files
+src/test/
+
+# Local data
+data/
+uploads/
+
+# Scripts (除了用于容器的)
+*.sh
+!*.sh 

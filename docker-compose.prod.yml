@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  # MySQL数据库
+  mysql:
+    image: mysql:8.0
+    container_name: badminton-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-BadmintonJourney2023!}
+      MYSQL_DATABASE: badminton_journey
+      MYSQL_USER: ${DB_USER:-badminton}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-badminton123}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "3306:3306"
+    networks:
+      - badminton_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.multi-stage
+    container_name: badminton-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_logs:/app/logs
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - JAVA_OPTS=-Xmx1024m -Xms512m
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=badminton_journey
+      - DB_USER=${DB_USER:-badminton}
+      - DB_PASSWORD=${DB_PASSWORD:-badminton123}
+      - JWT_SECRET=${JWT_SECRET:-ThisIsAVeryLongSecretKeyForBadmintonJourneyApplication2023!@#$%^&*()_+1234567890}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - badminton_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/auth/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: badminton-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - badminton_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Redis缓存（可选）
+  redis:
+    image: redis:7-alpine
+    container_name: badminton-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - badminton_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./uploads
+  backend_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./logs
+
+networks:
+  badminton_network:
+    driver: bridge 

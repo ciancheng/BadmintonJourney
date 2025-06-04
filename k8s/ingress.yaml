@@ -1,0 +1,143 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: badminton-ingress
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: ingress
+  annotations:
+    # Nginx Ingress Controller 配置
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1024m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+    
+    # 启用 gzip 压缩
+    nginx.ingress.kubernetes.io/enable-compression: "true"
+    
+    # CORS 配置
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://badminton-journey.com,https://*.badminton-journey.com"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+    
+    # 速率限制
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    
+    # Cert-manager 自动证书申请（如果安装了 cert-manager）
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - badminton-journey.com
+    - api.badminton-journey.com
+    secretName: badminton-tls
+  rules:
+  # 主域名 - 前端服务
+  - host: badminton-journey.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+  
+  # API 子域名 - 后端服务
+  - host: api.badminton-journey.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8080
+---
+# 用于本地开发或测试的Ingress（无TLS）
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: badminton-ingress-local
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: ingress-local
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "1024m"
+    nginx.ingress.kubernetes.io/enable-compression: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  # 本地访问
+  - host: badminton.local
+    http:
+      paths:
+      # 前端
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+      # 后端 API
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8080
+---
+# 网络策略（可选，增强安全性）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: badminton-network-policy
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: badminton-journey
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # 允许来自 Ingress Controller 的流量
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+  # 允许同一命名空间内的通信
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: badminton-journey
+  egress:
+  # 允许 DNS 查询
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # 允许 HTTPS 出站连接
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+  # 允许同一命名空间内的通信
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: badminton-journey 

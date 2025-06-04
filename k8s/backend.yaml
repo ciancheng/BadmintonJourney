@@ -1,0 +1,194 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: badminton-journey
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: badminton-journey
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/api/actuator/prometheus"
+    spec:
+      containers:
+      - name: backend
+        image: badminton-journey-backend:1.0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: badminton-app-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: badminton-app-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: badminton-app-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: badminton-app-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: badminton-secrets
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: badminton-secrets
+              key: DB_PASSWORD
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: badminton-secrets
+              key: JWT_SECRET
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: badminton-app-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: badminton-app-config
+              key: REDIS_PORT
+        - name: JAVA_OPTS
+          valueFrom:
+            configMapKeyRef:
+              name: badminton-app-config
+              key: JAVA_OPTS
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: badminton-app-config
+              key: LOG_LEVEL
+        - name: UPLOAD_DIR
+          valueFrom:
+            configMapKeyRef:
+              name: badminton-app-config
+              key: UPLOAD_DIR
+        - name: ALLOWED_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: badminton-app-config
+              key: ALLOWED_ORIGINS
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: uploads-storage
+          mountPath: /app/uploads
+        - name: logs-storage
+          mountPath: /app/logs
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /api/actuator/health/liveness
+            port: 8080
+          initialDelaySeconds: 90
+          periodSeconds: 30
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/actuator/health/readiness
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /api/actuator/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 30
+      volumes:
+      - name: uploads-storage
+        persistentVolumeClaim:
+          claimName: uploads-pvc
+      - name: logs-storage
+        persistentVolumeClaim:
+          claimName: logs-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: backend
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-headless
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: backend
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http 

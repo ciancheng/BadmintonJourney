@@ -1,0 +1,452 @@
+# 羽球之旅 Kubernetes All-in-One 部署文件
+# Author: BadmintonJourney Team
+# Version: 1.0.0
+# 使用方法: kubectl apply -f all-in-one.yaml
+
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: badminton-journey
+  labels:
+    name: badminton-journey
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/version: "1.0.0"
+
+---
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: badminton-app-config
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: config
+data:
+  DB_HOST: "mysql-service"
+  DB_PORT: "3306"
+  DB_NAME: "badminton_journey"
+  SPRING_PROFILES_ACTIVE: "k8s"
+  SERVER_PORT: "8080"
+  JAVA_OPTS: "-Xmx1024m -Xms512m -XX:+UseG1GC"
+  LOG_LEVEL: "INFO"
+  MAX_FILE_SIZE: "1024MB"
+  UPLOAD_DIR: "/app/uploads"
+  ALLOWED_ORIGINS: "http://localhost,https://*.badminton-journey.com"
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+
+---
+# Secrets
+apiVersion: v1
+kind: Secret
+metadata:
+  name: badminton-secrets
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: config
+type: Opaque
+data:
+  DB_USER: YmFkbWludG9u  # badminton
+  DB_PASSWORD: YmFkbWludG9uMTIz  # badminton123
+  DB_ROOT_PASSWORD: QmFkbWludG9uSm91cm5leTIwMjMh  # BadmintonJourney2023!
+  JWT_SECRET: VGhpc0lzQVZlcnlMb25nU2VjcmV0S2V5Rm9yQmFkbWludG9uSm91cm5leUFwcGxpY2F0aW9uMjAyMyFAIyQlXiYqKClfKzEyMzQ1Njc4OTA=
+
+---
+# MySQL PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: badminton-journey
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+# Uploads PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uploads-pvc
+  namespace: badminton-journey
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+
+---
+# Logs PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: logs-pvc
+  namespace: badminton-journey
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Redis PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: badminton-journey
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: database
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: badminton-journey
+      app.kubernetes.io/component: database
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: badminton-journey
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: badminton-secrets
+              key: DB_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: badminton-app-config
+              key: DB_NAME
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: badminton-secrets
+              key: DB_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: badminton-secrets
+              key: DB_PASSWORD
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command: ["mysqladmin", "ping", "-h", "localhost"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["mysqladmin", "ping", "-h", "localhost"]
+          initialDelaySeconds: 5
+          periodSeconds: 2
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+# MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: badminton-journey
+spec:
+  selector:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: database
+  ports:
+  - port: 3306
+    targetPort: 3306
+
+---
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: badminton-journey
+      app.kubernetes.io/component: cache
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: badminton-journey
+        app.kubernetes.io/component: cache
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        command: ["redis-server", "--appendonly", "yes"]
+        volumeMounts:
+        - name: redis-storage
+          mountPath: /data
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 5
+          periodSeconds: 2
+      volumes:
+      - name: redis-storage
+        persistentVolumeClaim:
+          claimName: redis-pvc
+
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: badminton-journey
+spec:
+  selector:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: cache
+  ports:
+  - port: 6379
+    targetPort: 6379
+
+---
+# Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: badminton-journey
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: badminton-journey
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+      - name: backend
+        image: badminton-journey-backend:1.0.0
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: badminton-app-config
+        - secretRef:
+            name: badminton-secrets
+        volumeMounts:
+        - name: uploads-storage
+          mountPath: /app/uploads
+        - name: logs-storage
+          mountPath: /app/logs
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /api/actuator/health
+            port: 8080
+          initialDelaySeconds: 90
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /api/actuator/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: uploads-storage
+        persistentVolumeClaim:
+          claimName: uploads-pvc
+      - name: logs-storage
+        persistentVolumeClaim:
+          claimName: logs-pvc
+
+---
+# Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: badminton-journey
+spec:
+  selector:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: backend
+  ports:
+  - port: 8080
+    targetPort: 8080
+
+---
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: badminton-journey
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: badminton-journey
+        app.kubernetes.io/component: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: badminton-journey-frontend:1.0.0
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: badminton-journey
+spec:
+  selector:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: frontend
+  ports:
+  - port: 80
+    targetPort: 80
+
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: badminton-ingress
+  namespace: badminton-journey
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "1024m"
+    nginx.ingress.kubernetes.io/enable-compression: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: badminton.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8080 

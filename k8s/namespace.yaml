@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: badminton-journey
+  labels:
+    name: badminton-journey
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/version: "1.0.0"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: badminton-journey-quota
+  namespace: badminton-journey
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 8Gi
+    persistentvolumeclaims: "5"
+    services: "10"
+    secrets: "10"
+    configmaps: "10" 

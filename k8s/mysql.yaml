@@ -1,0 +1,150 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: database
+    app.kubernetes.io/version: "8.0"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # 数据库使用Recreate策略
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: badminton-journey
+      app.kubernetes.io/component: database
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: badminton-journey
+        app.kubernetes.io/component: database
+        app.kubernetes.io/version: "8.0"
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        ports:
+        - containerPort: 3306
+          name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: badminton-secrets
+              key: DB_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: badminton-app-config
+              key: DB_NAME
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: badminton-secrets
+              key: DB_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: badminton-secrets
+              key: DB_PASSWORD
+        - name: TZ
+          value: "Asia/Shanghai"
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        - name: mysql-init
+          mountPath: /docker-entrypoint-initdb.d
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 5
+          periodSeconds: 2
+          timeoutSeconds: 1
+          successThreshold: 1
+          failureThreshold: 3
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+      - name: mysql-init
+        configMap:
+          name: mysql-init-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: database
+  ports:
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+    name: mysql
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-init-config
+  namespace: badminton-journey
+  labels:
+    app.kubernetes.io/name: badminton-journey
+    app.kubernetes.io/component: database
+data:
+  init.sql: |
+    -- 羽球之旅数据库初始化脚本
+    -- 创建数据库和配置字符集
+    
+    CREATE DATABASE IF NOT EXISTS badminton_journey 
+        CHARACTER SET utf8mb4 
+        COLLATE utf8mb4_unicode_ci;
+    
+    USE badminton_journey;
+    
+    -- 创建用户（如果不存在）
+    CREATE USER IF NOT EXISTS 'badminton'@'%' IDENTIFIED BY 'badminton123';
+    
+    -- 授权
+    GRANT ALL PRIVILEGES ON badminton_journey.* TO 'badminton'@'%';
+    GRANT ALL PRIVILEGES ON badminton_journey.* TO 'badminton'@'localhost';
+    
+    -- 刷新权限
+    FLUSH PRIVILEGES;
+    
+    -- 设置时区
+    SET GLOBAL time_zone = '+8:00';
+    
+    -- 显示初始化信息
+    SELECT 'BadmintonJourney database initialized successfully!' as message; 
