@@ -59,12 +59,36 @@ public class GameController {
     }
     
     @PostMapping("/{id}/video")
-    public ResponseEntity<?> uploadVideo(
+    public ResponseEntity<?> addVideo(
             @PathVariable Long id,
             @RequestParam("video") MultipartFile video) {
         
         String videoPath = fileStorageService.storeFile(video, "videos");
-        Game game = gameService.updateVideo(id, videoPath);
+        Game game = gameService.addVideo(id, videoPath);
         return ResponseEntity.ok(game);
+    }
+    
+    @PostMapping("/{id}/videos")
+    public ResponseEntity<?> addVideos(
+            @PathVariable Long id,
+            @RequestParam("videos") MultipartFile[] videos) {
+        
+        Game game = null;
+        for (MultipartFile video : videos) {
+            String videoPath = fileStorageService.storeFile(video, "videos");
+            game = gameService.addVideo(id, videoPath);
+        }
+        return ResponseEntity.ok(game);
+    }
+    
+    @DeleteMapping("/{id}/video")
+    public ResponseEntity<?> removeVideo(
+            @PathVariable Long id,
+            @RequestParam("videoPath") String videoPath) {
+        
+        Game game = gameService.removeVideo(id, videoPath);
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "视频删除成功");
+        return ResponseEntity.ok(response);
     }
 } 

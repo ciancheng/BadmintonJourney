@@ -2,6 +2,8 @@ package com.badmintonjourney.entity;
 
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 
 import javax.persistence.*;
 import java.time.LocalDate;
@@ -46,9 +48,11 @@ public class Competition extends BaseEntity {
     
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
+    @JsonBackReference("user-competitions")
     private User user;
     
     @OneToMany(mappedBy = "competition", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference("competition-matches")
     private List<Match> matches = new ArrayList<>();
     
     public enum CompetitionResult {

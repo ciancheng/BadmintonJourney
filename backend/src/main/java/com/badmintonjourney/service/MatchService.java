@@ -43,6 +43,7 @@ public class MatchService {
         Match match = new Match();
         BeanUtils.copyProperties(matchDTO, match, "id", "competitionId");
         match.setCompetition(competition);
+        match.setMatchTime(java.time.LocalDateTime.now());
         
         return matchRepository.save(match);
     }
@@ -63,7 +64,7 @@ public class MatchService {
     }
     
     @Transactional(readOnly = true)
-    public Match getMatch(Long id) {
+    public MatchDTO getMatch(Long id) {
         Long userId = getCurrentUserId();
         Match match = matchRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("对战不存在"));
@@ -72,7 +73,7 @@ public class MatchService {
             throw new RuntimeException("无权查看此对战");
         }
         
-        return match;
+        return convertToDTO(match);
     }
     
     @Transactional(readOnly = true)
@@ -99,5 +100,24 @@ public class MatchService {
         }
         
         matchRepository.delete(match);
+    }
+    
+    private MatchDTO convertToDTO(Match match) {
+        MatchDTO dto = new MatchDTO();
+        dto.setId(match.getId());
+        dto.setMatchType(match.getMatchType());
+        dto.setOpponentName(match.getOpponentName());
+        dto.setOpponentCity(match.getOpponentCity());
+        dto.setScore(match.getScore());
+        dto.setResult(match.getResult());
+        dto.setCoachComment(match.getCoachComment());
+        dto.setSelfSummary(match.getSelfSummary());
+        if (match.getCompetition() != null) {
+            dto.setCompetitionId(match.getCompetition().getId());
+        }
+        if (match.getGames() != null) {
+            dto.setGameCount(match.getGames().size());
+        }
+        return dto;
     }
 } 

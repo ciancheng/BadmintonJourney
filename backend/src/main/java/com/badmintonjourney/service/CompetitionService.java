@@ -36,16 +36,21 @@ public class CompetitionService {
     }
     
     @Transactional
-    public Competition createCompetition(CompetitionDTO competitionDTO) {
+    public CompetitionDTO createCompetition(CompetitionDTO competitionDTO) {
         Long userId = getCurrentUserId();
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("用户不存在"));
         
         Competition competition = new Competition();
-        BeanUtils.copyProperties(competitionDTO, competition, "id", "photos");
+        competition.setCompetitionName(competitionDTO.getCompetitionName());
+        competition.setStartDate(competitionDTO.getStartDate());
+        competition.setEndDate(competitionDTO.getEndDate());
+        competition.setCity(competitionDTO.getCity());
+        competition.setVenue(competitionDTO.getVenue());
         competition.setUser(user);
         
-        return competitionRepository.save(competition);
+        Competition savedCompetition = competitionRepository.save(competition);
+        return convertToDTO(savedCompetition);
     }
     
     @Transactional
@@ -118,5 +123,65 @@ public class CompetitionService {
         
         competition.getPhotos().addAll(photoPaths);
         return competitionRepository.save(competition);
+    }
+    
+    @Transactional
+    public Competition removePhoto(Long id, String photoPath) {
+        Long userId = getCurrentUserId();
+        Competition competition = competitionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("比赛不存在"));
+        
+        if (!competition.getUser().getId().equals(userId)) {
+            throw new RuntimeException("无权修改此比赛");
+        }
+        
+        // Remove photo from list
+        competition.getPhotos().remove(photoPath);
+        
+        // Delete the actual file
+        fileStorageService.deleteFile(photoPath);
+        
+        return competitionRepository.save(competition);
+    }
+    
+    @Transactional
+    public Competition removePhotos(Long id, List<String> photoPaths) {
+        Long userId = getCurrentUserId();
+        Competition competition = competitionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("比赛不存在"));
+        
+        if (!competition.getUser().getId().equals(userId)) {
+            throw new RuntimeException("无权修改此比赛");
+        }
+        
+        // Remove photos from list
+        for (String photoPath : photoPaths) {
+            competition.getPhotos().remove(photoPath);
+            // Delete the actual file
+            fileStorageService.deleteFile(photoPath);
+        }
+        
+        return competitionRepository.save(competition);
+    }
+    
+    private CompetitionDTO convertToDTO(Competition competition) {
+        CompetitionDTO dto = new CompetitionDTO();
+        dto.setId(competition.getId());
+        dto.setCompetitionName(competition.getCompetitionName());
+        dto.setStartDate(competition.getStartDate());
+        dto.setEndDate(competition.getEndDate());
+        dto.setCity(competition.getCity());
+        dto.setVenue(competition.getVenue());
+        dto.setResult(competition.getResult());
+        dto.setPhotos(competition.getPhotos());
+        dto.setCoachComment(competition.getCoachComment());
+        dto.setSelfSummary(competition.getSelfSummary());
+        if (competition.getUser() != null) {
+            dto.setUserId(competition.getUser().getId());
+        }
+        if (competition.getMatches() != null) {
+            dto.setMatchCount(competition.getMatches().size());
+        }
+        return dto;
     }
 } 

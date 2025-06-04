@@ -2,6 +2,7 @@ package com.badmintonjourney.entity;
 
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 import javax.persistence.*;
 import java.util.ArrayList;
@@ -29,6 +30,7 @@ public class User extends BaseEntity {
     private String nickname;
     
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference("user-competitions")
     private List<Competition> competitions = new ArrayList<>();
     
     @Column(nullable = false)

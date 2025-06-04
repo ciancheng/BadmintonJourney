@@ -36,6 +36,22 @@ const gameService = {
       }
     });
     return response.data;
+  },
+
+  uploadVideos: async (id, formData) => {
+    const response = await api.post(`/games/${id}/videos`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
+
+  removeVideo: async (id, videoPath) => {
+    const response = await api.delete(`/games/${id}/video`, {
+      params: { videoPath }
+    });
+    return response.data;
   }
 };
 

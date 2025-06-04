@@ -60,15 +60,11 @@ public class GameService {
             throw new RuntimeException("无权修改此局");
         }
         
-        BeanUtils.copyProperties(gameDTO, game, "id", "match", "matchId", "videoPath");
+        BeanUtils.copyProperties(gameDTO, game, "id", "match", "matchId", "videos");
         
-        // Don't overwrite video path unless explicitly provided
-        if (gameDTO.getVideoPath() != null) {
-            // Delete old video if exists
-            if (game.getVideoPath() != null && !game.getVideoPath().equals(gameDTO.getVideoPath())) {
-                fileStorageService.deleteFile(game.getVideoPath());
-            }
-            game.setVideoPath(gameDTO.getVideoPath());
+        // Handle videos separately
+        if (gameDTO.getVideos() != null) {
+            game.setVideos(gameDTO.getVideos());
         }
         
         return gameRepository.save(game);
@@ -110,16 +106,18 @@ public class GameService {
             throw new RuntimeException("无权删除此局");
         }
         
-        // Delete associated video if exists
-        if (game.getVideoPath() != null) {
-            fileStorageService.deleteFile(game.getVideoPath());
+        // Delete associated videos if exist
+        if (game.getVideos() != null) {
+            for (String videoPath : game.getVideos()) {
+                fileStorageService.deleteFile(videoPath);
+            }
         }
         
         gameRepository.delete(game);
     }
     
     @Transactional
-    public Game updateVideo(Long id, String videoPath) {
+    public Game addVideo(Long id, String videoPath) {
         Long userId = getCurrentUserId();
         Game game = gameRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("局不存在"));
@@ -128,12 +126,26 @@ public class GameService {
             throw new RuntimeException("无权修改此局");
         }
         
-        // Delete old video if exists
-        if (game.getVideoPath() != null) {
-            fileStorageService.deleteFile(game.getVideoPath());
+        game.getVideos().add(videoPath);
+        return gameRepository.save(game);
+    }
+    
+    @Transactional
+    public Game removeVideo(Long id, String videoPath) {
+        Long userId = getCurrentUserId();
+        Game game = gameRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("局不存在"));
+        
+        if (!game.getMatch().getCompetition().getUser().getId().equals(userId)) {
+            throw new RuntimeException("无权修改此局");
         }
         
-        game.setVideoPath(videoPath);
+        // Remove video from list
+        game.getVideos().remove(videoPath);
+        
+        // Delete the actual file
+        fileStorageService.deleteFile(videoPath);
+        
         return gameRepository.save(game);
     }
 } 

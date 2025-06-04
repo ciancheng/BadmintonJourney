@@ -45,8 +45,8 @@ public class CompetitionController {
     
     @PostMapping
     public ResponseEntity<?> createCompetition(@Valid @RequestBody CompetitionDTO competitionDTO) {
-        Competition competition = competitionService.createCompetition(competitionDTO);
-        return ResponseEntity.ok(competition);
+        CompetitionDTO createdCompetition = competitionService.createCompetition(competitionDTO);
+        return ResponseEntity.ok(createdCompetition);
     }
     
     @PutMapping("/{id}")
@@ -78,5 +78,27 @@ public class CompetitionController {
         
         Competition competition = competitionService.addPhotos(id, photoPaths);
         return ResponseEntity.ok(competition);
+    }
+    
+    @DeleteMapping("/{id}/photos")
+    public ResponseEntity<?> deletePhoto(
+            @PathVariable Long id,
+            @RequestParam("photoPath") String photoPath) {
+        
+        Competition competition = competitionService.removePhoto(id, photoPath);
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "照片删除成功");
+        return ResponseEntity.ok(response);
+    }
+    
+    @DeleteMapping("/{id}/photos/batch")
+    public ResponseEntity<?> deletePhotos(
+            @PathVariable Long id,
+            @RequestBody List<String> photoPaths) {
+        
+        Competition competition = competitionService.removePhotos(id, photoPaths);
+        Map<String, String> response = new HashMap<>();
+        response.put("message", String.format("成功删除%d张照片", photoPaths.size()));
+        return ResponseEntity.ok(response);
     }
 } 

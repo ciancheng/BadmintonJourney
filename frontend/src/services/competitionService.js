@@ -40,6 +40,20 @@ const competitionService = {
       }
     });
     return response.data;
+  },
+
+  deletePhoto: async (id, photoPath) => {
+    const response = await api.delete(`/competitions/${id}/photos`, {
+      params: { photoPath }
+    });
+    return response.data;
+  },
+
+  deletePhotos: async (id, photoPaths) => {
+    const response = await api.delete(`/competitions/${id}/photos/batch`, {
+      data: photoPaths
+    });
+    return response.data;
   }
 };
 

@@ -11,9 +11,10 @@ import {
   Chip,
   CircularProgress,
   Alert,
-  Pagination
+  Pagination,
+  IconButton
 } from '@mui/material';
-import { Add } from '@mui/icons-material';
+import { Add, Delete } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import competitionService from '../services/competitionService';
@@ -47,6 +48,19 @@ function CompetitionList() {
 
   const handlePageChange = (event, value) => {
     setPage(value - 1);
+  };
+
+  const handleDeleteCompetition = async (competitionId, competitionName, event) => {
+    event.stopPropagation();
+    if (window.confirm(`确定要删除比赛"${competitionName}"吗？此操作不可撤销。`)) {
+      try {
+        await competitionService.deleteCompetition(competitionId);
+        loadCompetitions(); // 重新加载列表
+      } catch (err) {
+        alert('删除失败，请重试');
+        console.error(err);
+      }
+    }
   };
 
   const getResultColor = (result) => {
@@ -83,7 +97,7 @@ function CompetitionList() {
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Typography variant="h4" gutterBottom>
-        我的比赛记录
+        我的比赛
       </Typography>
 
       {error && (
@@ -106,7 +120,26 @@ function CompetitionList() {
           <Grid container spacing={3}>
             {competitions.map((competition) => (
               <Grid item xs={12} sm={6} md={4} key={competition.id}>
-                <Card>
+                <Card sx={{ position: 'relative' }}>
+                  {/* 删除按钮 - 右上角 */}
+                  <IconButton
+                    color="error"
+                    aria-label="delete"
+                    onClick={(event) => handleDeleteCompetition(competition.id, competition.competitionName, event)}
+                    sx={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      zIndex: 1,
+                      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                      '&:hover': {
+                        backgroundColor: 'rgba(255, 255, 255, 1)',
+                      }
+                    }}
+                  >
+                    <Delete />
+                  </IconButton>
+                  
                   <CardActionArea onClick={() => navigate(`/competitions/${competition.id}`)}>
                     <CardContent>
                       <Typography variant="h6" gutterBottom>

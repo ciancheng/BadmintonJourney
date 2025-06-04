@@ -19,8 +19,16 @@ spring:
   
   servlet:
     multipart:
-      max-file-size: 50MB
-      max-request-size: 100MB
+      max-file-size: 1024MB
+      max-request-size: 1024MB
+
+  # Jackson配置
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+      read-unknown-enum-values-as-null: true
+    mapper:
+      accept-case-insensitive-enums: true
 
 server:
   port: 8080
@@ -29,7 +37,7 @@ server:
 
 # JWT配置
 jwt:
-  secret: badmintonJourneySecretKey2023!@#$%^&*()
+  secret: ThisIsAVeryLongSecretKeyForBadmintonJourneyApplication2023!@#$%^&*()_+1234567890
   expiration: 86400000 # 24 hours
 
 # 文件上传配置

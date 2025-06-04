@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = '/api';
+const API_URL = '/api'; // 从'/api'改为空字符串
 
 const api = axios.create({
   baseURL: API_URL,
@@ -39,4 +39,5 @@ api.interceptors.response.use(
   }
 );
 
-export default api; 
+export default api;
+

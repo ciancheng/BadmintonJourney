@@ -46,7 +46,7 @@ function Login({ onLogin }) {
       >
         <Paper elevation={3} sx={{ padding: 4, width: '100%' }}>
           <Typography component="h1" variant="h5" align="center" gutterBottom>
-            登录羽球之旅
+            羽球之旅
           </Typography>
           
           {error && (
