@@ -29,7 +29,10 @@ import {
   ListItemSecondaryAction,
   Autocomplete,
   Checkbox,
-  FormControlLabel
+  FormControlLabel,
+  Radio,
+  RadioGroup,
+  FormLabel
 } from '@mui/material';
 import {
   Edit,
@@ -45,15 +48,19 @@ import {
   ArrowForwardIos,
   DeleteOutline,
   SelectAll,
-  Clear
+  Clear,
+  VideoCall,
+  VideoLibrary,
+  PlayArrow
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import dayjs from 'dayjs';
 import competitionService from '../services/competitionService';
 import matchService from '../services/matchService';
+import gameService from '../services/gameService';
 import { fetchCitiesFromAPI } from '../data/cities';
-import { getMatchTypeText, getCompetitionResultText, getMatchResultText } from '../utils/formatters';
+import { getMatchTypeText, getCompetitionResultText, getMatchResultText, getGameResultText } from '../utils/formatters';
 
 function CompetitionDetail() {
   const { id } = useParams();
@@ -61,6 +68,7 @@ function CompetitionDetail() {
   
   const [competition, setCompetition] = useState(null);
   const [matches, setMatches] = useState([]);
+  const [matchGames, setMatchGames] = useState({}); // 存储每个对战的局比赛数据
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [openMatchDialog, setOpenMatchDialog] = useState(false);
@@ -69,6 +77,18 @@ function CompetitionDetail() {
   const [myScore, setMyScore] = useState('');
   const [opponentScore, setOpponentScore] = useState('');
   const [autoResult, setAutoResult] = useState('');
+  
+  // 每局比赛相关状态
+  const [openGameDialog, setOpenGameDialog] = useState(false);
+  const [editingGame, setEditingGame] = useState(null);
+  const [currentMatchId, setCurrentMatchId] = useState(null);
+  const [myGameScore, setMyGameScore] = useState('');
+  const [opponentGameScore, setOpponentGameScore] = useState('');
+  const [gameResult, setGameResult] = useState('');
+  
+  // 视频相关状态
+  const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState('');
   
   // 照片相关状态
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
@@ -80,6 +100,7 @@ function CompetitionDetail() {
   const [selectedPhotos, setSelectedPhotos] = useState(new Set());
 
   const { control, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm();
+  const { control: gameControl, handleSubmit: handleGameSubmit, formState: { errors: gameErrors }, reset: resetGame } = useForm();
 
   useEffect(() => {
     loadData();
@@ -95,6 +116,21 @@ function CompetitionDetail() {
       ]);
       setCompetition(competitionData);
       setMatches(matchesData);
+      
+      // 加载每个对战的局比赛数据
+      const gamesData = {};
+      await Promise.all(
+        matchesData.map(async (match) => {
+          try {
+            const games = await gameService.getMatchGames(match.id);
+            gamesData[match.id] = games;
+          } catch (err) {
+            console.error(`Failed to load games for match ${match.id}:`, err);
+            gamesData[match.id] = [];
+          }
+        })
+      );
+      setMatchGames(gamesData);
       
       // 设置照片列表
       if (competitionData.photos && competitionData.photos.length > 0) {
@@ -140,6 +176,24 @@ function CompetitionDetail() {
       setValue('result', '');
     }
   }, [myScore, opponentScore, setValue]);
+
+  // 监听局比赛分数变化，自动判断胜负
+  useEffect(() => {
+    if (myGameScore !== '' && opponentGameScore !== '') {
+      const my = parseInt(myGameScore);
+      const opponent = parseInt(opponentGameScore);
+      
+      if (my > opponent) {
+        setGameResult('胜');
+      } else if (my < opponent) {
+        setGameResult('负');
+      } else {
+        setGameResult('平');
+      }
+    } else {
+      setGameResult('');
+    }
+  }, [myGameScore, opponentGameScore]);
 
   const handleDeleteCompetition = async () => {
     if (window.confirm('确定要删除这场比赛吗？所有相关的对战记录也将被删除。')) {
@@ -359,6 +413,142 @@ function CompetitionDetail() {
 
   const getResultText = (result) => {
     return getCompetitionResultText(result);
+  };
+
+  // 每局比赛相关处理函数
+  const handleOpenGameDialog = (matchId, game = null) => {
+    setCurrentMatchId(matchId);
+    if (game) {
+      setEditingGame(game);
+      // 拆分比分
+      if (game.score && game.score.includes(':')) {
+        const [my, opponent] = game.score.split(':');
+        setMyGameScore(my.trim());
+        setOpponentGameScore(opponent.trim());
+      } else {
+        setMyGameScore('');
+        setOpponentGameScore('');
+      }
+      
+      resetGame({
+        gameNumber: game.gameNumber.toString(),
+        coachComment: game.coachComment || '',
+        selfSummary: game.selfSummary || ''
+      });
+    } else {
+      setEditingGame(null);
+      const existingGames = matchGames[matchId] || [];
+      const nextGameNumber = existingGames.length + 1;
+      setMyGameScore('');
+      setOpponentGameScore('');
+      resetGame({
+        gameNumber: nextGameNumber.toString(),
+        coachComment: '',
+        selfSummary: ''
+      });
+    }
+    setOpenGameDialog(true);
+  };
+
+  const handleCloseGameDialog = () => {
+    setOpenGameDialog(false);
+    setEditingGame(null);
+    setCurrentMatchId(null);
+    setMyGameScore('');
+    setOpponentGameScore('');
+    setGameResult('');
+  };
+
+  const handleSaveGame = async (data) => {
+    try {
+      // 组合比分
+      const score = myGameScore && opponentGameScore ? `${myGameScore}:${opponentGameScore}` : '';
+      
+      // 根据比分自动判断结果
+      let result = null;
+      if (myGameScore !== '' && opponentGameScore !== '') {
+        const my = parseInt(myGameScore);
+        const opponent = parseInt(opponentGameScore);
+        
+        if (my > opponent) {
+          result = 'WIN';
+        } else if (my < opponent) {
+          result = 'LOSE';
+        }
+        // 平局情况不设置result，保持null
+      }
+      
+      const gameData = {
+        ...data,
+        gameNumber: parseInt(data.gameNumber),
+        score,
+        result
+      };
+      
+      if (editingGame) {
+        await gameService.updateGame(editingGame.id, gameData);
+      } else {
+        await gameService.createGame({ ...gameData, matchId: currentMatchId });
+      }
+      handleCloseGameDialog();
+      loadData();
+    } catch (err) {
+      alert('保存失败');
+    }
+  };
+
+  const handleDeleteGame = async (gameId) => {
+    if (window.confirm('确定要删除这局比赛吗？')) {
+      try {
+        await gameService.deleteGame(gameId);
+        loadData();
+      } catch (err) {
+        alert('删除失败');
+      }
+    }
+  };
+
+  // 视频相关处理函数
+  const handleUploadVideo = async (gameId, event) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      try {
+        const formData = new FormData();
+        Array.from(files).forEach(file => {
+          formData.append('videos', file);
+        });
+        
+        await gameService.uploadVideos(gameId, formData);
+        loadData();
+        alert(`成功上传${files.length}个视频`);
+      } catch (err) {
+        alert('视频上传失败');
+      }
+    }
+    // 清空input值，允许重复上传相同文件
+    event.target.value = '';
+  };
+
+  const handleRemoveVideo = async (gameId, videoPath) => {
+    if (window.confirm('确定要删除这个视频吗？')) {
+      try {
+        await gameService.removeVideo(gameId, videoPath);
+        loadData();
+        alert('视频删除成功');
+      } catch (err) {
+        alert('视频删除失败');
+      }
+    }
+  };
+
+  const handlePlayVideo = (videoPath) => {
+    setSelectedVideo(videoPath);
+    setVideoModalOpen(true);
+  };
+
+  const handleCloseVideoModal = () => {
+    setVideoModalOpen(false);
+    setSelectedVideo('');
   };
 
   if (loading) {
@@ -637,10 +827,7 @@ function CompetitionDetail() {
             {matches.map((match, index) => (
               <React.Fragment key={match.id}>
                 {index > 0 && <Divider />}
-                <ListItem
-                  button
-                  onClick={() => navigate(`/matches/${match.id}`)}
-                >
+                <ListItem>
                   <ListItemText
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -660,6 +847,16 @@ function CompetitionDetail() {
                         <Typography variant="body2" color="text.secondary">
                           来自{match.opponentCity?.name || match.opponentCity} | 比分 {match.score || '-'}
                         </Typography>
+                        {match.coachComment && (
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                            教练评语：{match.coachComment}
+                          </Typography>
+                        )}
+                        {match.selfSummary && (
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                            个人总结：{match.selfSummary}
+                          </Typography>
+                        )}
                       </Box>
                     }
                   />
@@ -684,6 +881,182 @@ function CompetitionDetail() {
                     </IconButton>
                   </ListItemSecondaryAction>
                 </ListItem>
+                
+                {/* 每局比赛信息 - 平铺显示 */}
+                {matchGames[match.id] && matchGames[match.id].length > 0 && (
+                  <Box sx={{ ml: 4, mb: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        每局比赛记录：
+                      </Typography>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<Add />}
+                        onClick={() => handleOpenGameDialog(match.id)}
+                      >
+                        添加一局
+                      </Button>
+                    </Box>
+                    {matchGames[match.id].map((game, gameIndex) => (
+                      <Box key={game.id} sx={{ 
+                        ml: 2, 
+                        mb: 1, 
+                        p: 1.5, 
+                        backgroundColor: 'rgba(0,0,0,0.02)',
+                        borderRadius: 1,
+                        border: '1px solid rgba(0,0,0,0.08)',
+                        position: 'relative'
+                      }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                          <Typography variant="body2" fontWeight="medium">
+                            第{game.gameNumber}局
+                          </Typography>
+                          <Typography variant="body2">
+                            比分：{game.score}
+                          </Typography>
+                          {game.result && (
+                            <Chip
+                              label={getGameResultText(game.result)}
+                              color={game.result === 'WIN' ? 'success' : 'error'}
+                              size="small"
+                              sx={{ height: 20, fontSize: '0.75rem' }}
+                            />
+                          )}
+                        </Box>
+                        
+                        {/* 视频区域 */}
+                        {game.videos && game.videos.length > 0 && (
+                          <Box sx={{ mb: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            {game.videos.map((videoPath, index) => (
+                              <Box
+                                key={index}
+                                sx={{
+                                  position: 'relative',
+                                  width: 120,
+                                  height: 80,
+                                  cursor: 'pointer',
+                                  borderRadius: 1,
+                                  overflow: 'hidden',
+                                  border: '2px solid #1976d2',
+                                  '&:hover': {
+                                    opacity: 0.8
+                                  }
+                                }}
+                              >
+                                <video
+                                  width="100%"
+                                  height="100%"
+                                  style={{ objectFit: 'cover' }}
+                                  onClick={() => handlePlayVideo(videoPath)}
+                                >
+                                  <source src={`/api/uploads/videos/${videoPath.split('/').pop()}`} />
+                                </video>
+                                <Box
+                                  sx={{
+                                    position: 'absolute',
+                                    top: '50%',
+                                    left: '50%',
+                                    transform: 'translate(-50%, -50%)',
+                                    color: 'white',
+                                    backgroundColor: 'rgba(0,0,0,0.6)',
+                                    borderRadius: '50%',
+                                    width: 32,
+                                    height: 32,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}
+                                  onClick={() => handlePlayVideo(videoPath)}
+                                >
+                                  <PlayArrow />
+                                </Box>
+                                <IconButton
+                                  size="small"
+                                  sx={{
+                                    position: 'absolute',
+                                    top: 2,
+                                    right: 2,
+                                    color: 'white',
+                                    backgroundColor: 'rgba(255,0,0,0.7)',
+                                    width: 20,
+                                    height: 20,
+                                    '&:hover': {
+                                      backgroundColor: 'rgba(255,0,0,0.9)',
+                                    }
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveVideo(game.id, videoPath);
+                                  }}
+                                >
+                                  <Close fontSize="small" sx={{ fontSize: 14 }} />
+                                </IconButton>
+                              </Box>
+                            ))}
+                          </Box>
+                        )}
+                        
+                        {game.coachComment && (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
+                            教练评语：{game.coachComment}
+                          </Typography>
+                        )}
+                        {game.selfSummary && (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 0.5 }}>
+                            个人总结：{game.selfSummary}
+                          </Typography>
+                        )}
+                        
+                        {/* 操作按钮 */}
+                        <Box sx={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 0.5 }}>
+                          <input
+                            accept="video/*"
+                            style={{ display: 'none' }}
+                            id={`video-upload-${game.id}`}
+                            type="file"
+                            multiple
+                            onChange={(e) => handleUploadVideo(game.id, e)}
+                          />
+                          <label htmlFor={`video-upload-${game.id}`}>
+                            <IconButton component="span" size="small" color="primary" title="上传视频">
+                              <VideoCall fontSize="small" />
+                            </IconButton>
+                          </label>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenGameDialog(match.id, game)}
+                            title="编辑"
+                          >
+                            <Edit fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeleteGame(game.id)}
+                            color="error"
+                            title="删除"
+                          >
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+                
+                {/* 如果没有每局比赛记录，显示添加按钮 */}
+                {(!matchGames[match.id] || matchGames[match.id].length === 0) && (
+                  <Box sx={{ ml: 4, mb: 2 }}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Add />}
+                      onClick={() => handleOpenGameDialog(match.id)}
+                    >
+                      添加一局
+                    </Button>
+                  </Box>
+                )}
               </React.Fragment>
             ))}
           </List>
@@ -883,6 +1256,115 @@ function CompetitionDetail() {
         </form>
       </Dialog>
 
+      {/* 每局比赛对话框 */}
+      <Dialog open={openGameDialog} onClose={handleCloseGameDialog} maxWidth="sm" fullWidth>
+        <form onSubmit={handleGameSubmit(handleSaveGame)}>
+          <DialogTitle>{editingGame ? '编辑局' : '添加新局'}</DialogTitle>
+          <DialogContent>
+            <Controller
+              name="gameNumber"
+              control={gameControl}
+              rules={{ required: '请选择局数' }}
+              render={({ field }) => (
+                <FormControl>
+                  <FormLabel>第几局</FormLabel>
+                  <RadioGroup
+                    {...field}
+                    row
+                  >
+                    <FormControlLabel value="1" control={<Radio />} label="第1局" />
+                    <FormControlLabel value="2" control={<Radio />} label="第2局" />
+                    <FormControlLabel value="3" control={<Radio />} label="第3局" />
+                  </RadioGroup>
+                </FormControl>
+              )}
+            />
+
+            <Box sx={{ mt: 2, mb: 1 }}>
+              <Typography variant="body2" gutterBottom>小分</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <FormControl sx={{ minWidth: 80 }}>
+                  <InputLabel>我方</InputLabel>
+                  <Select
+                    value={myGameScore}
+                    onChange={(e) => setMyGameScore(e.target.value)}
+                    label="我方"
+                    size="small"
+                  >
+                    <MenuItem value="">-</MenuItem>
+                    {[...Array(31).keys()].map(i => (
+                      <MenuItem key={i} value={i.toString()}>{i}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                
+                <Typography variant="h6" sx={{ mx: 1 }}>:</Typography>
+                
+                <FormControl sx={{ minWidth: 80 }}>
+                  <InputLabel>对方</InputLabel>
+                  <Select
+                    value={opponentGameScore}
+                    onChange={(e) => setOpponentGameScore(e.target.value)}
+                    label="对方"
+                    size="small"
+                  >
+                    <MenuItem value="">-</MenuItem>
+                    {[...Array(31).keys()].map(i => (
+                      <MenuItem key={i} value={i.toString()}>{i}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                
+                {gameResult && (
+                  <Chip
+                    label={gameResult}
+                    color={gameResult === '胜' ? 'success' : gameResult === '负' ? 'error' : 'default'}
+                    size="small"
+                    sx={{ ml: 2 }}
+                  />
+                )}
+              </Box>
+            </Box>
+
+            <Controller
+              name="coachComment"
+              control={gameControl}
+              render={({ field }) => (
+                <TextField
+                  {...field}
+                  margin="normal"
+                  fullWidth
+                  label="教练评语"
+                  multiline
+                  rows={3}
+                />
+              )}
+            />
+
+            <Controller
+              name="selfSummary"
+              control={gameControl}
+              render={({ field }) => (
+                <TextField
+                  {...field}
+                  margin="normal"
+                  fullWidth
+                  label="个人总结"
+                  multiline
+                  rows={3}
+                />
+              )}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseGameDialog}>取消</Button>
+            <Button type="submit" variant="contained">
+              {editingGame ? '保存' : '添加'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
       {/* 照片查看器模态框 */}
       <Dialog 
         open={photoViewerOpen} 
@@ -1005,6 +1487,56 @@ function CompetitionDetail() {
                 </Box>
               )}
             </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 视频模态框 */}
+      <Dialog
+        open={videoModalOpen}
+        onClose={handleCloseVideoModal}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: 'black',
+            maxHeight: '90vh'
+          }
+        }}
+      >
+        <DialogTitle 
+          sx={{ 
+            color: 'white', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            py: 1
+          }}
+        >
+          <Typography variant="h6">
+            视频播放
+          </Typography>
+          <IconButton onClick={handleCloseVideoModal} sx={{ color: 'white' }}>
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {selectedVideo && (
+            <video
+              src={`/api/uploads/videos/${selectedVideo.split('/').pop()}`}
+              controls
+              autoPlay
+              style={{
+                maxWidth: '100%',
+                maxHeight: '70vh',
+                objectFit: 'contain'
+              }}
+            >
+              <source src={`/api/uploads/videos/${selectedVideo.split('/').pop()}`} type="video/mp4" />
+              <source src={`/api/uploads/videos/${selectedVideo.split('/').pop()}`} type="video/avi" />
+              <source src={`/api/uploads/videos/${selectedVideo.split('/').pop()}`} type="video/mov" />
+              您的浏览器不支持视频播放。
+            </video>
           )}
         </DialogContent>
       </Dialog>
