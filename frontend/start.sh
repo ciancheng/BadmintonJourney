@@ -69,22 +69,6 @@ else
     echo "✅ 依赖已安装"
 fi
 
-# 检查后端服务
-echo ""
-echo "检查后端服务..."
-if curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api | grep -q "200\|404"; then
-    echo "✅ 后端服务运行中"
-else
-    echo "⚠️  警告：后端服务未运行"
-    echo "请先在backend目录运行 ./start.sh 启动后端服务"
-    echo ""
-    echo "是否继续启动前端？(y/n)"
-    read -r answer
-    if [ "$answer" != "y" ]; then
-        exit 1
-    fi
-fi
-
 # 启动服务
 echo ""
 echo "========================================="
